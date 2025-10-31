@@ -146,14 +146,24 @@ def _compute_local_shape_and_global_offset(
 
     # StridedShard implies a non-standard order to apply shards; get the
     # correct order to start applying splits
-    ordered_placements = _explicit_order_placements(mesh_shape, placements)
+    all_shards_are_strided = all(
+        isinstance(p, _StridedShard) for p in placements if isinstance(p, Shard)
+    )
+    if all_shards_are_strided:
+        ordered_placements: Sequence[tuple[int, Placement]] = [
+            (mesh_dim, p)
+            for (mesh_dim, p) in enumerate(placements)
+            if isinstance(p, Shard)
+        ]
+    else:
+        ordered_placements = _explicit_order_placements(mesh_shape, placements)
 
     local_shape = list(global_shape)
     # We'll compute the data for where the shard begins on a per-dim basis.
     # However, a single dim can be sharded multiple times, so we will end up
     # doing a Sum(size*stride) like computation to determine the location of our
     # shard for each of the shardings on that dim.
-    global_offset = [0] * len(global_shape)
+    global_offset: list[int | None] = [0] * len(global_shape)
 
     for mesh_dim, placement in ordered_placements:
         mesh_dim_size = mesh_shape[mesh_dim]
@@ -169,6 +179,10 @@ def _compute_local_shape_and_global_offset(
             )
 
             local_shape[shard_dim] = shard_size
+
+            if isinstance(placement, _StridedShard):
+                global_offset[shard_dim] = None
+                continue
 
             shard_global_offset = global_offset[shard_dim] + not_none(shard_offset)
 
