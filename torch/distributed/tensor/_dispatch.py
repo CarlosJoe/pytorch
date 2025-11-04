@@ -135,6 +135,16 @@ class OpDispatcher:
     def _allow_implicit_replication(self, value: bool) -> None:
         return torch._C._set_dtensor_allow_implicit_replication(value)
 
+    def custom_op_handler(
+        self,
+        op_call: torch._ops.OpOverload,
+        args: tuple[object, ...],
+        kwargs: dict[str, object],
+    ) -> object:
+        # op_call is required to have a custom op handler; intentionally letting an
+        # exception get raised if not.
+        return self._custom_op_handlers[op_call](op_call, args, kwargs)  # type: ignore[operator]
+
     def dispatch(
         self,
         op_call: torch._ops.OpOverload,
@@ -147,9 +157,6 @@ class OpDispatcher:
         (2) registered sharding strategy, then rule
         (3) composite implicit autograd decomposition
         """
-        if op_call in self._custom_op_handlers:
-            return self._custom_op_handlers[op_call](op_call, args, kwargs)  # type: ignore[operator]
-
         # extract local tensor and sharding infos to a OpInfo
         op_info = self.unwrap_to_op_info(op_call, args, kwargs)
 
