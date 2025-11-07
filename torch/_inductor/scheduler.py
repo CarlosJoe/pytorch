@@ -6037,10 +6037,10 @@ class Scheduler:
                 node = typing.cast(ForeachKernelSchedulerNode, node)
                 # pyrefly: ignore [unbound-name]
                 backend_ = self.get_backend(device)
-                from .codegen.cuda_combined_scheduling import CUDACombinedScheduling
+                from .codegen.combined_scheduling import CombinedScheduling
                 from .codegen.simd import SIMDScheduling
 
-                if isinstance(backend_, (SIMDScheduling, CUDACombinedScheduling)):
+                if isinstance(backend_, (SIMDScheduling, CombinedScheduling)):
                     backend = backend_
                 else:
                     raise AssertionError(f"{type(self)=}")
