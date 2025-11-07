@@ -752,7 +752,13 @@ class Node(_NodeBase):
                 # between eager and compiled execution, regardless of generator usage
                 return True
 
-            return self.target in _side_effectful_functions
+            from torch._higher_order_ops.effects import _get_effect, EffectType
+
+            return (
+                self.target in _side_effectful_functions
+                or _get_effect(self.target)  # pyrefly: ignore[bad-argument-type]
+                == EffectType.ORDERED
+            )
 
         def subgraph_has_impure_ops(module: torch.fx.GraphModule) -> bool:
             """
