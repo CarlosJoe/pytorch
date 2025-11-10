@@ -2074,7 +2074,9 @@ class PythonWrapperCodegen(CodeGen):
             codegen_reinterpret_view_helper(data)
         )
 
-        def apply_reinterpret(name, tgt_size, tgt_stride, tgt_offset, cast_dtype, base_dtype):
+        def apply_reinterpret(
+            name, tgt_size, tgt_stride, tgt_offset, cast_dtype, base_dtype
+        ):
             s = self.codegen_python_shape_tuple(tgt_size)
             st = self.codegen_python_shape_tuple(tgt_stride)
             off = self.codegen_sizevar(tgt_offset)
@@ -3265,6 +3267,7 @@ class PythonWrapperCodegen(CodeGen):
                 input_buffer
             )
             if isinstance(input_buffer, ir.ReinterpretView):
+
                 def unwrap_views(target) -> ir.Buffer:
                     if isinstance(target, ir.BaseView):
                         return unwrap_views(target.unwrap_view())
