@@ -4,7 +4,9 @@ from unittest.mock import patch
 
 import torch
 from torch._dynamo.utils import counters
+from torch._functorch.aot_autograd import aot_export_module
 from torch.fx.experimental.proxy_tensor import make_fx
+from torch.testing import FileCheck
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 
@@ -89,6 +91,54 @@ def forward(self, arg0_1):
             printed_output = mock_stdout.getvalue().strip()
 
         self.assertEqual(printed_output, f"moo 1 2\nmoo {new_inp}\nmoo 1 2\nyeehop 4")
+        inputs = (torch.randn(3),)
+
+        # Without functionalization, print should just appear in the graph directly
+        gm = make_fx(M())(*inputs)
+        FileCheck().check_count("torch.ops.higher_order.print", 4, exactly=True).run(
+            gm.code
+        )
+
+        # With functionalization, it should appear wrapped with with_effects()
+        gm, gs = aot_export_module(M(), inputs, trace_joint=False)
+        self.assertExpectedInline(
+            str(gm.code).strip(),
+            """\
+def forward(self, arg0_1, arg1_1):
+    with_effects = torch.ops.higher_order.with_effects(arg0_1, torch.ops.higher_order.print, 'moo {x} {y}', x = 1, y = 2);  arg0_1 = None
+    getitem = with_effects[0];  with_effects = None
+    with_effects_1 = torch.ops.higher_order.with_effects(getitem, torch.ops.higher_order.print, 'moo {x}', x = arg1_1);  getitem = None
+    getitem_2 = with_effects_1[0];  with_effects_1 = None
+    add = torch.ops.aten.add.Tensor(arg1_1, arg1_1);  arg1_1 = None
+    with_effects_2 = torch.ops.higher_order.with_effects(getitem_2, torch.ops.higher_order.print, 'moo {x} {y}', x = 1, y = 2);  getitem_2 = None
+    getitem_4 = with_effects_2[0];  with_effects_2 = None
+    with_effects_3 = torch.ops.higher_order.with_effects(getitem_4, torch.ops.higher_order.print, 'yeehop {x}', x = 3);  getitem_4 = None
+    getitem_6 = with_effects_3[0];  with_effects_3 = None
+    return (getitem_6, add)""",
+        )
+        self.assertEqual(len(gs.input_tokens), 1)
+        self.assertEqual(len(gs.output_tokens), 1)
+
+    def test_print_with_input_mutations(self):
+        class M(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+
+            def forward(self, x):
+                torch._higher_order_ops.print("moo {x} {y}", x=1, y=2)
+                res = x + x
+                x.add_(res)
+                res = x + x
+                torch._higher_order_ops.print("moo {x} {y}", x=x, y=res)
+                return (res,)
+
+        inputs = (torch.randn(3),)
+
+        # With functionalization, it should appear wrapped with with_effects()
+        gm, gs = aot_export_module(M(), inputs, trace_joint=False)
+        self.assertEqual(len(gs.input_tokens), 1)
+        self.assertEqual(len(gs.output_tokens), 1)
+        self.assertEqual(len(gs.user_inputs_to_mutate), 1)
 
 
 if __name__ == "__main__":
