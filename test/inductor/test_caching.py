@@ -805,8 +805,8 @@ class InterfacesTest(TestMixin, TestCase):
         sleep_t: int = 5
 
         @intf.record(
-            custom_result_encoder=lambda value: "bar",
-            custom_result_decoder=lambda encoded_value: "bar",
+            custom_result_encoder=lambda *args, **kwargs: lambda value: "bar",
+            custom_result_decoder=lambda *args, **kwargs: lambda value: "bar",
         )
         def foo() -> None:
             sleep(sleep_t)
