@@ -1,8 +1,10 @@
 # Owner(s): ["module: higher order operators"]
 import io
+import unittest
 from unittest.mock import patch
 
 import torch
+from torch._dynamo.testing import same
 from torch._dynamo.utils import counters
 from torch._functorch.aot_autograd import aot_export_module
 from torch.fx.experimental.proxy_tensor import make_fx
@@ -19,7 +21,6 @@ class TestHopPrint(TestCase):
             torch._higher_order_ops.print("moo")
             return x
 
-        counters.clear()
         x = torch.randn(3, 3)
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             f(x)
@@ -34,7 +35,6 @@ class TestHopPrint(TestCase):
             x = x * x
             return x
 
-        counters.clear()
         x = torch.randn(3, 3)
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             f(x)
@@ -175,6 +175,64 @@ x = add_1, y = add_2);  getitem = None
             printed_output, f"moo {orig_inp} 2\nmoo {new_inp} {new_inp * 2}"
         )
 
+
+@unittest.skipIf(not torch._dynamo.is_dynamo_supported(), "dynamo isn't support")
+class TestHopPrintInDynamo(TestCase):
+    def test_reorder_print_no_graph_break(self):
+        def f(x):
+            x1 = x + x
+            torch._higher_order_ops.print("moo {x}", x=x1)
+            x2 = x1 * x1
+            torch._higher_order_ops.print("moo {x}", x=x2)
+            x3 = x2 + x2
+            return (x1, x3)
+
+        x = torch.ones(3, 3)
+        counters.clear()
+        opt_f = torch.compile(backend="eager")(f)
+        self.assertEqual(len(counters["graph_break"]), 0)
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            opt_out = opt_f(x)
+            printed_output = mock_stdout.getvalue().strip()
+            orig_out = f(x)
+
+        self.assertEqual(
+            printed_output,
+            f"moo {torch.ones(3, 3) * 2}\nmoo {torch.ones(3, 3) * 2 * torch.ones(3, 3) * 2}",
+        )
+        self.assertTrue(same(orig_out, opt_out))
+
+    def test_constant_mutation(self):
+        def f(x):
+            alist = [x]
+            alist.append(x + 1)
+            torch._higher_order_ops.print("moo {x}", x=alist[-1])
+            alist[0].sum().item()  # graph break
+            res = alist.pop()
+            torch._higher_order_ops.print("moo {x}", x=alist[-1])
+            res.sum().item()  # graph break
+            return res
+
+        inputs = (torch.tensor([1]),)
+        counters.clear()
+        opt_f = torch.compile(backend="eager")(f)
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            opt_out = opt_f(*inputs)
+            printed_output = mock_stdout.getvalue().strip()
+            orig_out = f(*inputs)
+
+        self.assertEqual(printed_output, "moo tensor([2])\nmoo tensor([1])")
+        self.assertTrue(same(orig_out, opt_out))
+
+    def test_print_full_graph(self):
+        def fn(a, b):
+            torch._higher_order_ops.print("print hop")
+            return torch.sin(a, out=b)
+
+        inp = [torch.randn(3, 3), torch.ones(3, 3)]
+        ref_out = fn(*inp)
+        out = torch.compile(fn, fullgraph=True)(*inp)
+        self.assertEqual(ref_out, out)
 
 if __name__ == "__main__":
     run_tests()
