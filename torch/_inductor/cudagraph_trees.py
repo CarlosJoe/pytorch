@@ -1444,7 +1444,14 @@ class CUDAGraphNode:
                 self_loc = self_ref()
                 if self_loc is None:
                     return False
-                return self_loc.get_output_refcount(i) == 2
+                refcount = self.get_output_refcount(i)
+                if self.cached_tensor_outputs[i]._use_count() > 1:
+                    # c10::Tensor may also holds one reference count
+                    assert refcount >= 3
+                    return refcount == 3
+                else:
+                    assert refcount >= 2
+                    return refcount == 2
 
             check = functools.partial(check_refcount, i=i)
 
