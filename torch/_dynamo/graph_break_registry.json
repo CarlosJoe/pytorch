@@ -3657,5 +3657,15 @@
       "Explanation": "Encountered triton kernel unsupported feature: {msg}",
       "Hints": []
     }
+  ],
+  "GB0362": [
+    {
+      "Gb_type": "Unsupported input type in backward graph of autograd.Function",
+      "Context": "Unsupported node type {type(example_value)}",
+      "Explanation": "Node {node} has example_value {example_value} which is not a Tensor/Symint/None",
+      "Hints": [
+        "It may be possible to write Dynamo tracing rules for this code. Please report an issue to PyTorch if you encounter this graph break often and it is causing performance issues."
+      ]
+    }
   ]
 }
