@@ -15928,6 +15928,24 @@ if RUN_GPU:
                     f"with torch.{GPU_TYPE}._DeviceGuard(0)", 1, exactly=True
                 ).run(code)
 
+        @skipCUDAIf(not SM80OrLater, "uses bfloat16 which requires SM >= 80")
+        def test_bf16_atomic_add(self):
+            def fn(output, indices, values):
+                output.index_put_([indices], values, accumulate=True)
+                return output
+
+            indices = torch.tensor([0, 1], device=GPU_TYPE)
+            values = torch.randn(2, 768, dtype=torch.bfloat16, device=GPU_TYPE)
+            output = torch.zeros(512, 768, dtype=torch.bfloat16, device=GPU_TYPE)
+
+            result, code = run_and_get_code(torch.compile(fn), output, indices, values)
+            self.assertTrue(
+                "tl.atomic_add" in code[0],
+                "bf16 should generate tl.atomic_add",
+            )
+            expected = torch.zeros(512, 768, dtype=torch.bfloat16, device=GPU_TYPE)
+            torch.testing.assert_close(result, fn(expected, indices, values))
+
     class RNNTest(TestCase):
         device_type = GPU_TYPE
 
