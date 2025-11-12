@@ -448,6 +448,15 @@ test_inductor_distributed() {
   assert_git_not_dirty
 }
 
+test_inductor_core() {
+  time python test/run_test.py \
+    --include-inductor-core-tests \
+    --exclude inductor/test_benchmark_fusion inductor/test_cutlass_backend inductor/test_flex_attention inductor/test_max_autotune \
+    --verbose \
+    --upload-artifacts-while-running
+  assert_git_not_dirty
+}
+
 test_inductor_shard() {
   if [[ -z "$NUM_TEST_SHARDS" ]]; then
     echo "NUM_TEST_SHARDS must be defined to run a Python test shard"
@@ -1779,6 +1788,8 @@ elif [[ "${TEST_CONFIG}" == *inductor_cpp_wrapper* ]]; then
   if [[ "$SHARD_NUMBER" -eq "1" ]]; then
     test_inductor_aoti_cpp
   fi
+elif [[ "${TEST_CONFIG}" == *inductor_core* ]]; then
+  test_inductor_core
 elif [[ "${TEST_CONFIG}" == *inductor* ]]; then
   install_torchvision
   test_inductor_shard "${SHARD_NUMBER}"
